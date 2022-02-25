@@ -32,13 +32,21 @@ renv::restore()
 # # write year-condition to csv, so you don't have to manually add each year to warm or cold year_condition
 # # auto-run both warm and cold conditions and produce both outputs
 
-year_condition<-"warm"
+year_condition <- "all"
+# year_condition<-"warm"
 # year_condition <- "cold"
 present<-year(today())
 if(year_condition=="warm") {year_select<-c(2003:2005,2014:2020,present)}
 if(year_condition=="cold"){year_select<-c(2006:2013, present)}
+if(year_condition=="all"){year_select<-c(2003:present)}
 year_select
 
+# need to put in survey ID from last cruise (found in RACEBASE.SURVEYS)
+# # SURVEY_DEFINITION_ID = 98 for EBS and 143 for NBS
+last_survey_id <- c(585, 584) #check
+
+cruise <- paste0(202101, ",", 202102)
+vessel_nums <- c(162, 94)
 
 # read in specimen data ------------------------------------------------------------
 
@@ -62,47 +70,66 @@ oracle_data <- sqlQuery(channel, "   SELECT * FROM RACEBASE.SPECIMEN a
                                                 JOIN RACE_DATA.V_CRUISES c
                                                 ON a.CRUISEJOIN = c.CRUISEJOIN
                                                 WHERE a.REGION = 'BS'
-                                                AND b.YEAR >= 2003
+                                                AND a.CRUISE >= 200301
                                                 AND c.SURVEY_DEFINITION_ID = 143
                                                 OR c.SURVEY_DEFINITION_ID = 98")
 
 # end <- Sys.time() #took ~5 minutes to run
 # 
-# write_csv(oracle_data, path = here("data", paste0("oracle_data_", today(), ".csv"))) #~45 MB, takes a while
-orc_data <- read_csv(file = here::here("data", "oracle_data_2021-02-22.csv"))
+write_csv(oracle_data, path = here("data", paste0("oracle_data_", today(), ".csv"))) #~45 MB, takes a while
+# orc_data <- read_csv(file = here::here("data", "oracle_data_2021-02-22.csv"))
+orc_data <- read_csv(file = here::here("data", "oracle_data_2022-02-25.csv"))
 
 orc_data
 
-spec_data <- orc_data %>% 
-  clean_names()
+spec_data <- #oracle_data %>% as_tibble %>% 
+  orc_data %>%
+  clean_names() %>% 
+  dplyr::filter(year >= 2003)
 
 head(spec_data)
 
 # read in previous LW and max L parameters --------------------------------
 
+# Survey ID 576 or 577 
+# 2021: 585 (EBS), 584 (NBS)
+query_command <- paste0(" select * from race_data.cruises where cruise in (", cruise,");")
+cruise_info <- sqlQuery(channel, query_command) %>% 
+  as_tibble() %>% 
+  clean_names()
 
-previous_parameters<-sqlQuery(channel, "   SELECT * FROM RACE_DATA.SURVEY_LENGTH_STANDARDS
-                                                WHERE SURVEY_ID = 576
-                                                OR SURVEY_ID = 577;")
-write_csv(previous_parameters, file = here("data", paste0("previous_parameters_", today(), ".csv"))) 
-prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2021-03-01.csv"))
+cruise_id_nums <- cruise_info %>% dplyr::filter(vessel_id %in% vessel_nums) 
+
+# PAY ATTENTION TO THE FOLLOWING LINE: make sure you are getting all unique survey id numbers!
+survey_id <- paste0(unique(cruise_id_nums$survey_id)[1], "," , unique(cruise_id_nums$survey_id)[2])
+
+# get previous parameters using previous survey
+query_command <- paste0(" select * from RACE_DATA.SURVEY_LENGTH_STANDARDS where SURVEY_ID in (", survey_id,");")
+
+previous_parameters<-sqlQuery(channel, query_command)
+
+write_csv(previous_parameters, path = here("data", paste0("previous_parameters_", today(), ".csv"))) 
+# prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2021-03-01.csv")) #2020
+prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2022-02-25.csv"))
 prev_params <- prev_parameters_csv %>% janitor::clean_names()
 
 # read in species codes ---------------------------------------------------
 
 #read in species codes
 lw2020<-read.csv(here::here("data","final_2020_lw_parameters.csv"))
-species_codes<-lw2020[,"species_code"]
-species_names<-lw2020[,"common_name"]
-name_code <- lw2020 %>% 
-  dplyr::select(common_name, species_code)
+# species_codes<-lw2020[,"species_code"]
+# species_names<-lw2020[,"common_name"]
+# name_code <- lw2020 %>% 
+#   dplyr::select(common_name, species_code)
+# write_csv(name_code, path = here("data", "lw_species_names.csv"))
 
+name_code <- read_csv(here("input", "lw_species_names.csv"))
 
 # filter data -------------------------------------------------------------
 
 spec_dat <- spec_data %>% 
   dplyr::filter(survey_definition_id %in% c(98,143)) %>% 
-  dplyr::filter(species_code %in% species_codes) %>% 
+  dplyr::filter(species_code %in% name_code$species_code) %>% 
   dplyr::filter(year %in% year_select) %>% 
   dplyr::select(species_code, length, weight) %>% 
   full_join(name_code)
@@ -167,6 +194,8 @@ for(i in 1:length(unique(spec_dat$species_code))) # re-arrange results returned 
 }
 param_dat <- param_dat %>% arrange(species_code) #final values for each species
 
+dir.create(here("output"), showWarnings = FALSE)
+dir.create(here("output", "histograms"), showWarnings = FALSE)
 write_csv(param_dat, path = here("output", paste0("species_LW_param_ests_", year_condition, "_", today(),".csv"))) #save results as .csv to output folder with date
 
 # CHECK against previous parameters
@@ -190,7 +219,8 @@ prev_params %>%
 prev_params %>% 
   dplyr::filter(is.na(maximum_length_source)) %>% 
   dplyr::filter(maximum_length != 999) %>% 
-  dplyr::filter(maximum_length != 9999)
+  dplyr::filter(maximum_length != 9999) %>% 
+  left_join(name_code) #names with NA are species estimated in previous parameters, but NOT currently included in our list of species to do.
 # # do these numbers make sense, given the species? Or are they incorrect entries?
 
 # set and check max lengths -----------------------------------------------
@@ -199,20 +229,21 @@ prev_params %>%
 len_data <- orc_data %>% 
   clean_names() %>% 
   dplyr::filter(survey_definition_id %in% c(98,143)) %>%
-  dplyr::filter(species_code %in% species_codes) %>% 
+  dplyr::filter(species_code %in% name_code$species_code) %>% 
   group_by(species_code) %>% 
   summarise(max_length = max(length, na.rm = T),
             pctile_99 = quantile(length, .999, na.rm = TRUE)) %>% 
   mutate(species_code = as.integer(species_code)) %>% 
-  full_join(name_code)
+  left_join(name_code)
 
 # use previous_parameters to check prev max lengths
 check_lens <- prev_params %>% 
   rename(max_len_prev = maximum_length) %>% 
-  dplyr::filter(species_code %in% species_codes) %>% 
-  dplyr::filter(survey_id == 576) %>% 
+  dplyr::filter(species_code %in% name_code$species_code) %>% 
+  dplyr::filter(survey_id %in% last_survey_id) %>% 
   dplyr::select(species_code, max_len_prev) %>% 
-  mutate(species_code = as.integer(species_code))
+  mutate(species_code = as.integer(species_code)) %>% arrange(species_code) %>% 
+  distinct()
      
 all_lengths <- full_join(x = len_data, y = check_lens, by = "species_code") %>% 
   mutate(flag = if_else(max_length >= pctile_99*1.1, TRUE, FALSE)) # flag = true means problem
@@ -311,14 +342,15 @@ param_dat
 # get sources for previous max length
 prev_dat <- prev_params %>% 
   dplyr::select(species_code, maximum_length_source) %>% 
-  dplyr::filter(species_code %in% species_codes) %>% 
+  dplyr::filter(species_code %in% name_code$species_code) %>% 
   drop_na(maximum_length_source) %>% 
   arrange(species_code)
 prev_dat <- distinct(prev_dat) #remove duplicate rows
 
 # get lw source label
 if(year_condition == "warm") {lw_label = paste("EBS + NBS shelf warm years: ", paste(year_select, collapse = ', '))
-}else if(year_condition =="cold"){lw_label = paste("EBS + NBS shelf cold years: ", paste(year_select, collapse = ', '))}
+}else if(year_condition =="cold"){lw_label = paste("EBS + NBS shelf cold years: ", paste(year_select, collapse = ', '))
+}else if(year_condition =="all"){lw_label = paste("EBS + NBS shelf all years: ", paste("2003 to ", (present-1) ))}
 
 full_output <- lw2020 %>% 
   dplyr::select(-alpha, -beta, -max, -maximum_length_source, -lw_parameters_source) %>% 
