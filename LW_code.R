@@ -23,7 +23,7 @@ library(readr)
 library(broom)
 
 # renv::init()
-renv::restore()
+# renv::restore()
 
 # update warm and cold years each year before running LW regression --------
 #defines warm and cold years
@@ -116,7 +116,7 @@ prev_params <- prev_parameters_csv %>% janitor::clean_names()
 # read in species codes ---------------------------------------------------
 
 #read in species codes
-lw2020<-read.csv(here::here("data","final_2020_lw_parameters.csv"))
+lw2020 <- read.csv(here::here("data","final_2020_lw_parameters.csv"))
 # species_codes<-lw2020[,"species_code"]
 # species_names<-lw2020[,"common_name"]
 # name_code <- lw2020 %>% 
@@ -124,6 +124,16 @@ lw2020<-read.csv(here::here("data","final_2020_lw_parameters.csv"))
 # write_csv(name_code, path = here("data", "lw_species_names.csv"))
 
 name_code <- read_csv(here("input", "lw_species_names.csv"))
+
+new_spec <- anti_join(name_code, lw2020) %>% 
+  mutate(survey = 3) %>% 
+  mutate(poly_species_code = case_when(species_code %% 10200 == 0 ~ 18,
+                                       species_code %% 10220 == 0 ~ 22)) #when you're adding a new species, 
+                                                                      # add polycorder code that corresponds to species number
+                                                                      # race_data.race_species_codes has polycorder numbers
+# CIA: add feature to pull polycorder code
+
+lw2020 <- full_join(lw2020, new_spec)
 
 # filter data -------------------------------------------------------------
 
@@ -329,7 +339,7 @@ keep_max_lens <- all_lengths %>%
 
 write_csv(keep_max_lens, path = here("output", paste0("species_max_lens_", today(), ".csv")))
 
-# keep_max_lens <- read_csv(here("output", "species_max_lens_2021-03-04.csv"))
+# keep_max_lens <- read_csv(here("output", "species_max_lens_2022-02-25.csv"))
 
 # full output -------------------------------------------------------------
 
