@@ -125,6 +125,7 @@ lw2020 <- read.csv(here::here("data","final_2020_lw_parameters.csv"))
 
 name_code <- read_csv(here("input", "lw_species_names.csv"))
 
+#survey = 3 for EBS, survey = 7 for NBS, survey = 4 for EBS Slope, survey = 6 for Chukchi Sea
 new_spec <- anti_join(name_code, lw2020) %>% 
   mutate(survey = 3) %>% 
   mutate(poly_species_code = case_when(species_code %% 10200 == 0 ~ 18,
