@@ -2,15 +2,15 @@
 # Created by: Liz Dawson
 # Contact: liz.dawson@noaa.gov
 # Created: 2/10/2021
-# Modified: 2021-03-03
-# Modified by: C. Allen Akselrud, caitlin.allen_akselrud@noaa.gov
+# Modified: 2023-02-07
+# Modified by: Liz Dawson, liz.dawson@noaa.gov
 
 
 # install and load packages -----------------------------------------------
 
-#install.packages("FSA")
-#install.packages("FSAdata")
-#install.packages("RODBC")
+install.packages("FSA")
+install.packages("FSAdata")
+install.packages("RODBC")
 library(FSA)
 library(FSAdata)
 library(here)
@@ -43,10 +43,15 @@ year_select
 
 # need to put in survey ID from last cruise (found in RACEBASE.SURVEYS)
 # # SURVEY_DEFINITION_ID = 98 for EBS and 143 for NBS
-last_survey_id <- c(585, 584) #check
+last_survey_id <-  c(589, 591) #2023---date each year, Liz updated with 2023 values already!
+  #c(587, 588) 2022  
+  #c(585, 584) 2021
 
-cruise <- paste0(202101, ",", 202102)
-vessel_nums <- c(162, 94)
+cruise <- paste0(202201, ",", 202202) #update each year
+vessel_nums <- c(162, 134)  #check each year
+#94 = vesteraalen
+#134 = NW explorer
+# 162 = AK Knight
 
 # read in specimen data ------------------------------------------------------------
 
@@ -78,7 +83,7 @@ oracle_data <- sqlQuery(channel, "   SELECT * FROM RACEBASE.SPECIMEN a
 # 
 write_csv(oracle_data, path = here("data", paste0("oracle_data_", today(), ".csv"))) #~45 MB, takes a while
 # orc_data <- read_csv(file = here::here("data", "oracle_data_2021-02-22.csv"))
-orc_data <- read_csv(file = here::here("data", "oracle_data_2022-02-25.csv"))
+orc_data <- read_csv(file = here::here("data", "oracle_data_2023-02-07.csv"))
 
 orc_data
 
@@ -110,23 +115,23 @@ previous_parameters<-sqlQuery(channel, query_command)
 
 write_csv(previous_parameters, path = here("data", paste0("previous_parameters_", today(), ".csv"))) 
 # prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2021-03-01.csv")) #2020
-prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2022-02-25.csv"))
+prev_parameters_csv <- read_csv(file = here::here("data", "previous_parameters_2023-02-07.csv")) #update with date of previous parameters
 prev_params <- prev_parameters_csv %>% janitor::clean_names()
 
 # read in species codes ---------------------------------------------------
 
 #read in species codes
-lw2020 <- read.csv(here::here("data","final_2020_lw_parameters.csv"))
-# species_codes<-lw2020[,"species_code"]
-# species_names<-lw2020[,"common_name"]
-# name_code <- lw2020 %>% 
+lw2022 <- read.csv(here::here("data","new_species_params_all_2022-02-25.csv")) #update with date of previous parameters file
+# species_codes<-lw2022[,"species_code"]
+# species_names<-lw2022[,"common_name"]
+# name_code <- lw2022 %>% 
 #   dplyr::select(common_name, species_code)
-# write_csv(name_code, path = here("data", "lw_species_names.csv"))
+ write_csv(name_code, path = here("data", "lw_species_names.csv"))
 
 name_code <- read_csv(here("input", "lw_species_names.csv"))
 
 #survey = 3 for EBS, survey = 7 for NBS, survey = 4 for EBS Slope, survey = 6 for Chukchi Sea
-new_spec <- anti_join(name_code, lw2020) %>% 
+new_spec <- anti_join(name_code, lw2022) %>% 
   mutate(survey = 3) %>% 
   mutate(poly_species_code = case_when(species_code %% 10200 == 0 ~ 18,
                                        species_code %% 10220 == 0 ~ 22)) #when you're adding a new species, 
@@ -134,7 +139,7 @@ new_spec <- anti_join(name_code, lw2020) %>%
                                                                       # race_data.race_species_codes has polycorder numbers
 # CIA: add feature to pull polycorder code
 
-lw2020 <- full_join(lw2020, new_spec)
+lw2022 <- full_join(lw2022, new_spec)
 
 # filter data -------------------------------------------------------------
 
@@ -344,7 +349,7 @@ write_csv(keep_max_lens, path = here("output", paste0("species_max_lens_", today
 
 # full output -------------------------------------------------------------
 
-lw2020
+lw2022
 
 keep_max_lens
 
@@ -363,8 +368,8 @@ if(year_condition == "warm") {lw_label = paste("EBS + NBS shelf warm years: ", p
 }else if(year_condition =="cold"){lw_label = paste("EBS + NBS shelf cold years: ", paste(year_select, collapse = ', '))
 }else if(year_condition =="all"){lw_label = paste("EBS + NBS shelf all years: ", paste("2003 to ", (present-1) ))}
 
-full_output <- lw2020 %>% 
-  dplyr::select(-alpha, -beta, -max, -maximum_length_source, -lw_parameters_source) %>% 
+full_output <- lw2022 %>% 
+  dplyr::select(-alpha, -beta, -max_length, -current_max_len_source, -lw_parameters_source) %>% 
   full_join(param_dat) %>%
   mutate(lw_parameters_source = lw_label) %>% 
   full_join(keep_max_lens) %>% 
